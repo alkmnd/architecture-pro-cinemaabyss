@@ -1,0 +1,82 @@
+@startuml
+
+!define RELATIVE_INCLUDE
+
+!include C4_Container.puml
+
+Person(user, "Пользователь", "Смотрит видео на разных устройствах")
+
+System_Boundary("cinemaabyss", "«Кинобездна»") {
+
+    Container(web_ui, "Веб-интерфейс", "HTML5 / React", "Браузерный клиент")
+    Container(tv_app, "Приложение Smart TV", "HTML5 / JavaScript", "Клиент для Smart TV")
+    Container(mobile_app, "Мобильное приложение", "Flutter / Dart", "Клиент для iOS / Android")
+
+    Container(api_gateway, "API Gateway", "Go", "Единая точка входа: маршрутизация, аутентификация, rate-limiting")
+
+    Container(users_svc, "Users Service", "Go", "Домен «Пользователи»: профили, аккаунты")
+    ContainerDb(db_users, "БД пользователей", "PostgreSQL", "Данные пользователей")
+
+    Container(movies_svc, "Movies Service", "Go", "Домен «Каталог фильмов»: метаданные, поиск, агрегация контента")
+    ContainerDb(db_movies, "БД фильмов", "PostgreSQL", "Каталог фильмов")
+
+    Container(payments_svc, "Payments Service", "Go", "Домен «Платежи»: транзакции")
+    ContainerDb(db_payments, "БД платежей", "PostgreSQL", "Платежи и транзакции")
+
+    Container(subscriptions_svc, "Subscriptions Service", "Go", "Домен «Подписки»: тарифы, сроки")
+    ContainerDb(db_subscriptions, "БД подписок", "PostgreSQL", "Подписки пользователей")
+
+    Container(recommendations_svc, "Recommendations Service", "Go", "Домен «Рекомендации»: кеш подборок, контекст пользователя, адаптер к внешней reco")
+
+    Container(events_svc, "Events Service", "Go", "Шлюз событий: приём событий от сервисов (REST), публикация в Kafka, аудит")
+
+    ContainerQueue(broker, "Шина событий", "Kafka", "Топики: movie-events, user-events, payment-events")
+
+    ContainerQueue(rabbitmq, "Брокер", "RabbitMQ", "Очереди: events")
+}
+
+System_Ext(payment_gateway, "Платёжный шлюз", "Внешний процессинг платежей")
+System_Ext(reco_ext, "Рекомендательная система", "Сторонний сервис рекомендаций")
+System_Ext(content_providers, "Внешние онлайн-кинотеатры", "Источники контента")
+ContainerDb_Ext(s3, "S3-хранилище", "S3 / MinIO", "Внешнее объектное хранилище медиа: постеры, трейлеры, видео")
+
+Rel(user, web_ui, "Пользуется")
+Rel(user, tv_app, "Пользуется")
+Rel(user, mobile_app, "Пользуется")
+Rel(web_ui, api_gateway, "REST / HTTPS")
+Rel(tv_app, api_gateway, "REST / HTTPS")
+Rel(mobile_app, api_gateway, "REST / HTTPS")
+
+Rel(api_gateway, users_svc, "REST")
+Rel(api_gateway, movies_svc, "REST")
+Rel(api_gateway, payments_svc, "REST")
+Rel(api_gateway, subscriptions_svc, "REST")
+Rel(api_gateway, recommendations_svc, "REST")
+
+Rel(users_svc, db_users, "Читает / пишет")
+Rel(movies_svc, db_movies, "Читает / пишет")
+Rel(movies_svc, s3, "Читает / пишет медиа")
+Rel(payments_svc, db_payments, "Читает / пишет")
+Rel(subscriptions_svc, db_subscriptions, "Читает / пишет")
+
+Rel(payments_svc, payment_gateway, "Проводит платёж", "HTTPS")
+Rel(movies_svc, content_providers, "Запрашивает контент", "gRPC")
+
+
+Rel(users_svc, events_svc, "POST /api/events/user", "REST")
+Rel(movies_svc, events_svc, "POST /api/events/movie", "REST")
+Rel(payments_svc, events_svc, "POST /api/events/payment", "REST")
+Rel(events_svc, broker, "Публикует: movie-events, user-events, payment-events")
+
+Rel(subscriptions_svc, broker, "Читает: payment-events, user-events")
+
+Rel(recommendations_svc, broker, "Читает: user-events, movie-events")
+
+
+
+Rel(recommendations_svc, rabbitmq, "Отправляет события", "queue: events")
+Rel(rabbitmq, reco_ext, "Читает события", "consume")
+Rel(recommendations_svc, reco_ext, "Запрашивает рекомендации", "gRPC")
+
+LAYOUT_WITH_LEGEND()
+@enduml
